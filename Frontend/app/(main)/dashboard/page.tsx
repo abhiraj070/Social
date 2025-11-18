@@ -77,7 +77,7 @@ export default function DashboardPage() {
                   {/* Thumbnail */}
                   <div className="w-full sm:w-48 overflow-hidden rounded-md ring-1 ring-border">
                     <img
-                      src={v.thumbnail || "/placeholder.svg?height=160&width=280&query=video%20thumbnail"}
+                      src={ "/placeholder.svg?height=160&width=280&query=video%20thumbnail"}
                       alt={`Thumbnail for ${v.title}`}
                       className="h-28 w-full object-cover transition-transform duration-200 hover:scale-[1.02]"
                     />

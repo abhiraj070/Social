@@ -264,7 +264,7 @@ export default function ProfilePage() {
             <Card key={f.id}>
               <CardContent className="flex items-center gap-3 p-4">
                 <Image
-                  src={f.avatar || "/placeholder.svg"}
+                  src={"/placeholder.svg"}
                   alt={`${f.name} avatar`}
                   width={40}
                   height={40}
