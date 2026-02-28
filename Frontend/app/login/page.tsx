@@ -15,11 +15,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import axios from "axios";
+import { authApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
@@ -59,15 +61,8 @@ export default function LoginPage() {
       return;
     }
     try {
-      const res = await axios.post(
-        "/api/v1/users/login",
-        { email: email, username: username, password: password },
-        { withCredentials: true },
-      );
-      console.log("DATA: ", res.data);
-
-      localStorage.setItem("fullName", res.data.data.user.fullName);
-      localStorage.setItem("username", res.data.data.user.username);
+      await authApi.login({ email, username, password });
+      await refreshUser();
 
       setStatus("Login successful — redirecting…");
       toast({ title: "Logged in", description: "Welcome back!" });

@@ -7,69 +7,104 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { VideoCard } from "@/components/video-card";
-import { mockVideos, mockPlaylists, mockFollowing } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 import { EditProfileDialog } from "@/components/edit-profile-dialog";
-import axios from "axios";
+import { useAuth } from "@/lib/auth-context";
+import { tweetApi, subscriptionApi, authApi } from "@/lib/api";
+import api from "@/lib/api";
 
 type TabKey = "videos" | "playlists" | "tweets" | "following";
 
 interface Tweet {
-  id: string;
-  text: string;
-  user: string;
+  _id: string;
   content: string;
+  createdAt: string;
+  owner?: any;
 }
 
 export default function ProfilePage() {
   const [tab, setTab] = useState<TabKey>("videos");
-  const [tweets, setTweets] = useState<any[]>([]);
+  const [tweets, setTweets] = useState<Tweet[]>([]);
   const [tweetText, setTweetText] = useState("");
   const { toast } = useToast();
   const [openEdit, setOpenEdit] = useState(false);
-  const [profilename, setName] = useState("");
-  const [profileusername, setUsername] = useState("");
-  const [follow, setfollow] = useState("Follow");
-  const [bio, setbio] = useState(
-    "Short bio goes here. Tell the world who you are.",
-  );
+  const { user, refreshUser } = useAuth();
+  const [follow, setFollow] = useState("Follow");
+  const [profileData, setProfileData] = useState<any>(null);
+  const [videos, setVideos] = useState<any[]>([]);
+  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [following, setFollowing] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
+  const profilename = user?.fullName || "You";
+  const profileusername = user?.username || "you";
+
+  // Fetch profile, videos, tweets, playlists on mount
   useEffect(() => {
-    const savedname = localStorage.getItem("fullName");
-    const savedusername = localStorage.getItem("username");
-    setUsername(savedusername || "@YOU");
-    setName(savedname || "hi");
-  }, []);
+    if (!user) return;
+    setLoading(true);
+
+    // Fetch channel profile data (includes sub counts)
+    authApi
+      .getProfile(user.username)
+      .then((data: any) => setProfileData(data))
+      .catch(() => {});
+
+    // Fetch user's videos
+    api
+      .get("/video/publish-video")
+      .then((res) => {
+        const list = Array.isArray(res.data.data) ? res.data.data : [];
+        setVideos(list);
+      })
+      .catch(() => setVideos([]));
+
+    // Fetch user's tweets
+    tweetApi
+      .getUserTweets(user._id)
+      .then((data: any) => setTweets(Array.isArray(data) ? data : []))
+      .catch(() => setTweets([]));
+
+    // Fetch subscribed channels (following)
+    subscriptionApi
+      .getSubscribedChannels(user._id)
+      .then((data: any) => setFollowing(Array.isArray(data) ? data : []))
+      .catch(() => setFollowing([]));
+
+    setLoading(false);
+  }, [user]);
 
   function followToggle() {
-    if (follow == "Follow") {
-      setfollow("Unfollow");
-      toast({
-        title: "Unfollowed",
-        description: `You unfollowed ${profilename}`,
+    if (!user) return;
+    // Toggle subscription for the user's own channel (or another user)
+    subscriptionApi
+      .toggle(user._id)
+      .then(() => {
+        const next = follow === "Follow" ? "Unfollow" : "Follow";
+        setFollow(next);
+        toast({
+          title: next === "Unfollow" ? "Unfollowed" : "Followed",
+          description:
+            next === "Unfollow"
+              ? `You unfollowed ${profilename}`
+              : `You are now following ${profilename}`,
+        });
+      })
+      .catch((err: any) => {
+        toast({
+          title: "Error",
+          description: err?.response?.data?.message || "Action failed",
+          variant: "destructive",
+        });
       });
-    } else {
-      setfollow("Follow");
-      toast({
-        title: "Followed",
-        description: `You are now following ${profilename}`,
-      });
-    }
   }
 
   async function postTweet() {
-    console.log(13);
-
     if (!tweetText.trim()) return;
     try {
-      const res = await axios.post(
-        "/api/v1/tweet/create-tweet",
-        { content: tweetText.trim() }, // req.body.content is accesses in backend
-        { withCredentials: true }, //this allows the cookies to go with the response
-      );
-      console.log(19);
-      toast({ title: "Tweet Posted" }); //after the tweet is posted a pop will aper with the message in title.
-      setTweets([res.data.data, ...tweets]); // here tweets array get updated. (...tweets) creats a new array and puts the new tweet in the front. the creation of the new array will trigger rerender
+      const data = await tweetApi.create(tweetText.trim());
+      toast({ title: "Tweet Posted" });
+      setTweets([data as Tweet, ...tweets]);
       setTweetText("");
     } catch (error: any) {
       console.error(
@@ -85,27 +120,29 @@ export default function ProfilePage() {
     }
   }
 
-  function deleteTweet(id?: string) {
+  async function deleteTweet(id?: string) {
     if (!id) {
       console.warn("deleteTweet called without id");
       return;
     }
-    setTweets((prev) => {
-      const arr = Array.isArray(prev) ? prev : [];
-      return arr.filter((t) => Boolean(t) && t._id !== id);
-    });
-    toast({ title: "Tweet deleted" });
+    try {
+      await tweetApi.delete(id);
+      setTweets((prev) => {
+        const arr = Array.isArray(prev) ? prev : [];
+        return arr.filter((t) => Boolean(t) && t._id !== id);
+      });
+      toast({ title: "Tweet deleted" });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || "Could not delete tweet",
+        variant: "destructive",
+      });
+    }
   }
 
   function editProfile() {
-    const data = localStorage.getItem("profile");
-    const profile = JSON.parse(data ?? "");
-    const changedname = profile?.name;
-    const changedusername = profile?.username;
-    const newbio = profile?.bio;
-    setName(changedname);
-    setUsername(changedusername);
-    setbio(newbio);
+    setOpenEdit(true);
   }
 
   return (
@@ -114,7 +151,7 @@ export default function ProfilePage() {
       <section className="overflow-hidden rounded-lg border bg-card">
         <div className="relative h-48 w-full">
           <Image
-            src="/abstract-profile-cover.png"
+            src={user?.coverImage || "/abstract-profile-cover.png"}
             alt="Profile cover"
             fill
             sizes="100vw"
@@ -125,29 +162,29 @@ export default function ProfilePage() {
         <div className="px-4 pb-4 pt-0 md:px-6">
           <div className="relative -mt-12 flex flex-col items-center text-center">
             <Avatar className="relative z-10 h-24 w-24 rounded-full ring-4 ring-background shadow-md">
-              <AvatarImage src="/stylized-user-avatar.png" alt="User avatar" />
-              <AvatarFallback>U</AvatarFallback>
+              <AvatarImage src={user?.avatar || "/stylized-user-avatar.png"} alt="User avatar" />
+              <AvatarFallback>{profilename?.charAt(0) || "U"}</AvatarFallback>
             </Avatar>
             <h1 className="mt-3 text-xl font-semibold leading-tight md:text-2xl">
               {profilename}
             </h1>
             <p className="text-sm text-muted-foreground">@{profileusername}</p>
             <p className="mt-2 max-w-prose text-pretty text-sm text-muted-foreground">
-              {bio}
+              {profileData?.bio || "Short bio goes here. Tell the world who you are."}
             </p>
             <div className="mt-3 flex items-center gap-4 text-sm text-muted-foreground">
               <span>
-                <strong className="text-foreground">1</strong> Followers
+                <strong className="text-foreground">{profileData?.subscribersCount ?? 0}</strong> Followers
               </span>
               <span>
-                <strong className="text-foreground">1</strong> Following
+                <strong className="text-foreground">{profileData?.subscribedToCount ?? 0}</strong> Following
               </span>
             </div>
             <div className="mt-3 flex items-center gap-2">
               <Button onClick={followToggle}>{follow}</Button>
               <Button
                 variant="secondary"
-                onClick={() => (setOpenEdit(true), editProfile())}
+                onClick={() => editProfile()}
               >
                 Edit Profile
               </Button>
@@ -176,31 +213,39 @@ export default function ProfilePage() {
       {/* Content */}
       {tab === "videos" && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mockVideos.map((v) => (
-            <VideoCard key={v.id} video={v} />
+          {videos.map((v: any) => (
+            <VideoCard
+              key={v._id || v.id}
+              video={{
+                id: v._id || v.id,
+                title: v.title,
+                creator: v.owner?.fullName || v.owner?.username || profilename,
+                thumbnail: v.thumbnail || "",
+                avatar: v.owner?.avatar || user?.avatar || "",
+                views: v.totalViews ?? v.views ?? 0,
+                uploadDate: v.createdAt,
+              }}
+            />
           ))}
+          {videos.length === 0 && (
+            <p className="col-span-full text-sm text-muted-foreground">No videos yet.</p>
+          )}
         </section>
       )}
 
       {tab === "playlists" && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {mockPlaylists.map((p) => (
-            <Card key={p.id} className="overflow-hidden">
-              <div className="relative aspect-video">
-                <Image
-                  src={p.thumbnail || "/placeholder.svg"}
-                  alt={`${p.title} playlist`}
-                  fill
-                  sizes="(min-width: 768px) 33vw, 100vw"
-                  className="object-cover"
-                />
-              </div>
+          {playlists.length === 0 && (
+            <p className="col-span-full text-sm text-muted-foreground">No playlists yet.</p>
+          )}
+          {playlists.map((p: any) => (
+            <Card key={p._id || p.id} className="overflow-hidden">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-medium">{p.title}</h3>
+                    <h3 className="text-sm font-medium">{p.name}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {p.count} videos
+                      {p.videos?.length ?? 0} videos
                     </p>
                   </div>
                 </div>
@@ -260,18 +305,21 @@ export default function ProfilePage() {
 
       {tab === "following" && (
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-          {mockFollowing.map((f) => (
-            <Card key={f.id}>
+          {following.length === 0 && (
+            <p className="col-span-full text-sm text-muted-foreground">Not following anyone yet.</p>
+          )}
+          {following.map((f: any) => (
+            <Card key={f._id || f.id}>
               <CardContent className="flex items-center gap-3 p-4">
                 <Image
-                  src={"/placeholder.svg"}
-                  alt={`${f.name} avatar`}
+                  src={f.channel?.avatar || f.avatar || "/placeholder.svg"}
+                  alt={`${f.channel?.fullName || f.name || "User"} avatar`}
                   width={40}
                   height={40}
                   className="rounded-full"
                 />
                 <div>
-                  <p className="text-sm font-medium">{f.name}</p>
+                  <p className="text-sm font-medium">{f.channel?.fullName || f.name || "Unknown"}</p>
                   <p className="text-xs text-muted-foreground">Following</p>
                 </div>
               </CardContent>

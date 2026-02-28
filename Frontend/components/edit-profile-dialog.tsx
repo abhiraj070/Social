@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { authApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 type Props = {
   open: boolean;
@@ -21,25 +23,39 @@ type Props = {
 
 export function EditProfileDialog({ open, onOpenChange }: Props) {
   const { toast } = useToast();
-  const [name, setName] = useState("Your Name");
-  const [username, setUsername] = useState("you");
-  const [email, setEmail] = useState("you@example.com");
-  const [bio, setBio] = useState(
-    "Short bio goes here. Tell the world who you are.",
-  );
+  const { user, refreshUser } = useAuth();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [bio, setBio] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      // Potentially load persisted values here
+    if (open && user) {
+      setName(user.fullName || "");
+      setEmail(user.email || "");
+      setBio("");
     }
-  }, [open]);
+  }, [open, user]);
 
-  function onSave() {
-    // Persist to localStorage (mock)
-    const payload = { name, username, email, bio };
-    localStorage.setItem("profile", JSON.stringify(payload));
-    toast({ title: "Profile updated" });
-    onOpenChange(false);
+  async function onSave() {
+    setSaving(true);
+    try {
+      await authApi.updateAccount({
+        fullName: name.trim() || undefined,
+        email: email.trim() || undefined,
+      });
+      await refreshUser();
+      toast({ title: "Profile updated" });
+      onOpenChange(false);
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err?.response?.data?.message || "Could not update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -55,17 +71,6 @@ export function EditProfileDialog({ open, onOpenChange }: Props) {
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              value={username}
-              onChange={(e) =>
-                setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ""))
-              }
-              prefix="@"
             />
           </div>
           <div className="grid gap-2">
@@ -91,7 +96,9 @@ export function EditProfileDialog({ open, onOpenChange }: Props) {
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={onSave}>Save</Button>
+          <Button onClick={onSave} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

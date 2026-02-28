@@ -45,10 +45,20 @@ export function VideoEditDialog({ open, onOpenChange, video }: Props) {
 
   function onSave() {
     if (!video) return;
-    if (!title.trim() || !description.trim() || !thumb) return;
-    updateVideo(video.id, { title, description, thumbnail: thumb });
-    toast({ title: "Saved", description: "Video details updated." });
-    onOpenChange(false);
+    if (!title.trim() || !description.trim()) return;
+
+    updateVideo(video.id || video._id, { title, description })
+      .then(() => {
+        toast({ title: "Saved", description: "Video details updated." });
+        onOpenChange(false);
+      })
+      .catch((err: any) => {
+        toast({
+          title: "Error",
+          description: err?.response?.data?.message || "Could not update video",
+          variant: "destructive",
+        });
+      });
   }
 
   return (

@@ -7,9 +7,9 @@ import { useVideos } from "@/lib/use-videos";
 export function AnalyticsCards() {
   const { stats } = useVideos();
   const items = [
-    { label: "Total Likes", value: 0, icon: Heart },
-    { label: "Subscribers", value: 0, icon: Users },
-    { label: "Total Views", value: 0, icon: Eye },
+    { label: "Total Likes", value: stats.totalLikes, icon: Heart },
+    { label: "Subscribers", value: stats.subscribers, icon: Users },
+    { label: "Total Views", value: stats.totalViews, icon: Eye },
   ];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

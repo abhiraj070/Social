@@ -23,11 +23,20 @@ export default function DashboardPage() {
   const sorted = useMemo(() => [...videos].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)), [videos])
 
   function onTogglePublish(v: Video) {
-    togglePublished(v.id)
-    toast({
-      title: v.published ? "Unpublished" : "Published",
-      description: v.published ? "Your video is now hidden." : "Your video is live and visible.",
-    })
+    togglePublished(v.id || v._id)
+      .then(() => {
+        toast({
+          title: v.published ? "Unpublished" : "Published",
+          description: v.published ? "Your video is now hidden." : "Your video is live and visible.",
+        })
+      })
+      .catch((err: any) => {
+        toast({
+          title: "Error",
+          description: err?.response?.data?.message || "Could not toggle publish status",
+          variant: "destructive",
+        })
+      })
   }
 
   function onEdit(v: Video) {
@@ -42,8 +51,18 @@ export default function DashboardPage() {
   function onConfirmDelete() {
     if (!pendingDeleteId) return
     deleteVideo(pendingDeleteId)
-    setPendingDeleteId(null)
-    toast({ title: "Deleted", description: "The video has been removed." })
+      .then(() => {
+        setPendingDeleteId(null)
+        toast({ title: "Deleted", description: "The video has been removed." })
+      })
+      .catch((err: any) => {
+        setPendingDeleteId(null)
+        toast({
+          title: "Error",
+          description: err?.response?.data?.message || "Could not delete video",
+          variant: "destructive",
+        })
+      })
   }
 
   function onCancelDelete() {
@@ -77,7 +96,7 @@ export default function DashboardPage() {
                   {/* Thumbnail */}
                   <div className="w-full sm:w-48 overflow-hidden rounded-md ring-1 ring-border">
                     <img
-                      src={ "/placeholder.svg?height=160&width=280&query=video%20thumbnail"}
+                      src={v.thumbnail || "/placeholder.svg?height=160&width=280&query=video%20thumbnail"}
                       alt={`Thumbnail for ${v.title}`}
                       className="h-28 w-full object-cover transition-transform duration-200 hover:scale-[1.02]"
                     />

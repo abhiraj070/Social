@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,23 +15,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/lib/auth-context";
+import { authApi } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 export function TopNav() {
   const [query, setQuery] = useState("");
   const { toast } = useToast();
-  const [profileusername, setUsername] = useState("");
-  const [profilename, setName] = useState("");
+  const { user } = useAuth();
+  const router = useRouter();
 
-  useEffect(() => {
-    const savedname = localStorage.getItem("fullName");
-    const savedusername = localStorage.getItem("username");
-    setName(savedname || "YOU");
-    setUsername(savedusername || "@YOU");
-  }, []);
+  const profilename = user?.fullName || "YOU";
+  const profileusername = user?.username || "you";
 
   function onSearch(e) {
     e.preventDefault();
     toast({ title: "Search", description: `You searched for "${query}"` });
+  }
+
+  async function handleLogout() {
+    try {
+      await authApi.logout();
+    } catch {
+      // Even if the API call fails, clear local state
+    }
+    localStorage.removeItem("fullName");
+    localStorage.removeItem("username");
+    router.push("/login");
   }
 
   return (
@@ -69,10 +79,10 @@ export function TopNav() {
             <DropdownMenuTrigger className="rounded-full outline-none ring-0 cursor-pointer">
               <Avatar className="h-8 w-8">
                 <AvatarImage
-                  src="/stylized-user-avatar.png"
+                  src={user?.avatar || "/stylized-user-avatar.png"}
                   alt="User avatar"
                 />
-                <AvatarFallback>U</AvatarFallback>
+                <AvatarFallback>{profilename?.charAt(0) || "U"}</AvatarFallback>
               </Avatar>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -82,17 +92,17 @@ export function TopNav() {
               {/* Profile panel header */}
               <div className="relative h-20 w-full overflow-hidden rounded-t-md">
                 <img
-                  src="/abstract-profile-cover.png"
+                  src={user?.coverImage || "/abstract-profile-cover.png"}
                   alt="Cover"
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10">
                   <Avatar className="h-12 w-12 border-4 border-background shadow-md">
                     <AvatarImage
-                      src="/stylized-user-avatar.png"
+                      src={user?.avatar || "/stylized-user-avatar.png"}
                       alt="User avatar"
                     />
-                    <AvatarFallback>U</AvatarFallback>
+                    <AvatarFallback>{profilename?.charAt(0) || "U"}</AvatarFallback>
                   </Avatar>
                 </div>
               </div>
@@ -113,9 +123,9 @@ export function TopNav() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="cursor-pointer"
-                  onSelect={(e) => {
+                  onSelect={async (e) => {
                     e.preventDefault();
-                    window.location.href = "/login";
+                    await handleLogout();
                   }}
                 >
                   Logout

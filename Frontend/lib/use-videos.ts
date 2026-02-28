@@ -1,10 +1,13 @@
 // file: /lib/use-videos.ts
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { videoApi } from "@/lib/api"
+import api from "@/lib/api"
 
 export type Video = {
   id: string
+  _id?: string
   title: string
   description?: string
   thumbnail?: string
@@ -14,113 +17,88 @@ export type Video = {
   duration?: string
   published: boolean
   createdAt: string // ISO date string
+  owner?: any
+  totalLikes?: number
+  totalViews?: number
 }
 
-const STORAGE_KEY = "v0.videos"
-
-const seed: Video[] = [
-  {
-    id: "v1",
-    title: "Intro to the Platform",
-    description: "A quick walkthrough of features.",
-    thumbnail: "/video-thumb-intro.jpg",
-    channelName: "My Channel",
-    channelAvatar: "/abstract-channel-avatar.png",
-    views: 12345,
-    duration: "12:34",
-    published: true,
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-  },
-  {
-    id: "v2",
-    title: "Advanced Editing Tips",
-    description: "Make the most of your edits.",
-    thumbnail: "/video-thumb-editing.jpg",
-    channelName: "My Channel",
-    channelAvatar: "/abstract-channel-avatar.png",
-    views: 56789,
-    duration: "08:12",
-    published: false,
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    id: "v3",
-    title: "Behind the Scenes",
-    description: "How we plan and shoot videos.",
-    thumbnail: "/video-thumb-bts.jpg",
-    channelName: "My Channel",
-    channelAvatar: "/abstract-channel-avatar.png",
-    views: 9012,
-    duration: "05:47",
-    published: true,
-    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-  },
-]
-
-function read(): Video[] {
-  if (typeof window === "undefined") return seed
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Video[]) : seed
-  } catch {
-    return seed
+/** Map a backend video doc to our local Video shape */
+function mapVideo(v: any): Video {
+  return {
+    id: v._id || v.id,
+    _id: v._id || v.id,
+    title: v.title || "Untitled",
+    description: v.description || "",
+    thumbnail: v.thumbnail || "",
+    channelName: v.owner?.fullName || v.owner?.username || "My Channel",
+    channelAvatar: v.owner?.avatar || "",
+    views: v.totalViews ?? v.views ?? 0,
+    duration: v.duration ? String(v.duration) : undefined,
+    published: v.isPublished ?? v.published ?? true,
+    createdAt: v.createdAt || new Date().toISOString(),
+    owner: v.owner,
+    totalLikes: v.totalLikes ?? 0,
+    totalViews: v.totalViews ?? 0,
   }
-}
-
-function write(videos: Video[]) {
-  if (typeof window === "undefined") return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(videos))
-  window.dispatchEvent(new CustomEvent("videos:changed"))
 }
 
 export function useVideos() {
-  const [videos, setVideos] = useState<Video[]>(() => read())
+  const [videos, setVideos] = useState<Video[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const handler = () => setVideos(read())
-    window.addEventListener("storage", handler)
-    window.addEventListener("videos:changed", handler)
-    return () => {
-      window.removeEventListener("storage", handler)
-      window.removeEventListener("videos:changed", handler)
+  const fetchVideos = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.get("/video/publish-video")
+      const list = Array.isArray(res.data.data) ? res.data.data : []
+      setVideos(list.map(mapVideo))
+    } catch {
+      console.warn("useVideos: could not fetch videos")
+      setVideos([])
+    } finally {
+      setLoading(false)
     }
   }, [])
 
+  useEffect(() => {
+    fetchVideos()
+    const handler = () => fetchVideos()
+    window.addEventListener("video:uploaded", handler)
+    window.addEventListener("videos:changed", handler)
+    return () => {
+      window.removeEventListener("video:uploaded", handler)
+      window.removeEventListener("videos:changed", handler)
+    }
+  }, [fetchVideos])
+
   const stats = useMemo(() => {
-    const totalViews = videos.reduce((acc, v) => acc + v.views, 0)
-    const totalLikes = Math.round(totalViews * 0.08)
-    const subscribers = 4200
+    const totalViews = videos.reduce((acc, v) => acc + (v.totalViews ?? v.views ?? 0), 0)
+    const totalLikes = videos.reduce((acc, v) => acc + (v.totalLikes ?? 0), 0)
+    const subscribers = 0 // fetched separately via subscription API
     return { totalViews, totalLikes, subscribers }
   }, [videos])
 
-  function addVideo(input: Partial<Video> & { title: string }) {
-    const next: Video = {
-      id: `v_${crypto.randomUUID()}`,
-      createdAt: new Date().toISOString(),
-      views: 0,
-      published: false,
-      channelName: "My Channel",
-      channelAvatar: "/abstract-channel-avatar.png",
-      ...input,
-    }
-    const newList = [next, ...read()]
-    write(newList)
+  async function addVideo(formData: FormData) {
+    const data = await videoApi.publish(formData)
+    window.dispatchEvent(new CustomEvent("videos:changed"))
+    return data
   }
 
-  function updateVideo(id: string, patch: Partial<Video>) {
-    const list = read().map((v) => (v.id === id ? { ...v, ...patch } : v))
-    write(list)
+  async function updateVideo(id: string, patch: Record<string, unknown>) {
+    const data = await videoApi.update(id, patch)
+    window.dispatchEvent(new CustomEvent("videos:changed"))
+    return data
   }
 
-  function deleteVideo(id: string) {
-    const list = read().filter((v) => v.id !== id)
-    write(list)
+  async function deleteVideo(id: string) {
+    await videoApi.delete(id)
+    window.dispatchEvent(new CustomEvent("videos:changed"))
   }
 
-  function togglePublished(id: string) {
-    const list = read().map((v) => (v.id === id ? { ...v, published: !v.published } : v))
-    write(list)
+  async function togglePublished(id: string) {
+    await videoApi.togglePublish(id)
+    window.dispatchEvent(new CustomEvent("videos:changed"))
   }
 
-  return { videos, stats, addVideo, updateVideo, deleteVideo, togglePublished }
+  return { videos, stats, loading, addVideo, updateVideo, deleteVideo, togglePublished, refetch: fetchVideos }
 }

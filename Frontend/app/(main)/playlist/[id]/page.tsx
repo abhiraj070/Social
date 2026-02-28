@@ -1,24 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import VideoCard from "@/components/video-card";
-import { useVideos } from "@/lib/use-videos";
+import { playlistApi } from "@/lib/api";
 
 export default function PlaylistPage() {
   const params = useParams() as { id?: string };
-  const { videos } = useVideos();
+  const playlistId = String(params.id ?? "");
+  const [playlist, setPlaylist] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Mock playlist details based on id. In a real app, fetch by id.
-  const playlistId = String(params.id ?? "default");
-  const items = useMemo(
-    () =>
-      videos
-        .filter((v) => v.playlistId === playlistId || playlistId === "default")
-        .slice(0, 6),
-    [videos, playlistId],
-  );
+  useEffect(() => {
+    if (!playlistId) return;
+    playlistApi
+      .getById(playlistId)
+      .then((data: any) => setPlaylist(data))
+      .catch(() => setPlaylist(null))
+      .finally(() => setLoading(false));
+  }, [playlistId]);
+
+  const videos: any[] = playlist?.videos || [];
 
   return (
     <main className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
@@ -27,42 +30,45 @@ export default function PlaylistPage() {
           <CardTitle>Playlist Details</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center gap-3">
-            <img
-              src="/abstract-channel-avatar.png"
-              alt="Channel avatar"
-              className="h-10 w-10 rounded-full ring-1 ring-border object-cover"
-            />
-            <div>
-              <div className="text-sm font-medium">My Channel</div>
-              <div className="text-xs text-muted-foreground">6 videos</div>
-            </div>
-          </div>
-          <div className="text-sm">
-            A curated set of videos. ID: {playlistId}
-          </div>
+          {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {playlist && (
+            <>
+              <div className="text-sm font-medium">{playlist.name}</div>
+              <div className="text-xs text-muted-foreground">{playlist.description}</div>
+              <div className="text-xs text-muted-foreground">{videos.length} videos</div>
+            </>
+          )}
+          {!loading && !playlist && (
+            <p className="text-sm text-muted-foreground">Playlist not found.</p>
+          )}
         </CardContent>
       </Card>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Videos</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {items.map((v) => (
+          {videos.map((v: any) => (
             <div
-              key={v.id}
+              key={v._id || v.id}
               className="transition-transform hover:-translate-y-0.5"
             >
               <VideoCard
-                title={v.title}
-                thumbnail={v.thumbnail}
-                duration={v.duration}
-                views={v.views}
-                channelName={v.channelName}
-                channelAvatar={v.channelAvatar}
+                video={{
+                  id: v._id || v.id,
+                  title: v.title || "Untitled",
+                  creator: v.owner?.fullName || v.owner?.username || "",
+                  thumbnail: v.thumbnail || "",
+                  avatar: v.owner?.avatar || "",
+                  views: v.totalViews ?? v.views ?? 0,
+                  uploadDate: v.createdAt,
+                }}
               />
             </div>
           ))}
         </div>
+        {!loading && videos.length === 0 && (
+          <p className="text-sm text-muted-foreground">No videos in this playlist.</p>
+        )}
       </section>
     </main>
   );
